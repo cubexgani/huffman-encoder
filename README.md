@@ -37,5 +37,4 @@ That being said, there are still a few **to-dos**:
 1. Revamp the structure of the byte buffer.
 2. Make the source codes more readable.
 3. Structures for error handling (maybe).
-4. Terminal colours to show encoded text.
 

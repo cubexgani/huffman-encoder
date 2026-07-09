@@ -55,8 +55,11 @@ typedef struct {
 
 void initMap(mapEntry **, int);
 void freeMap(mapEntry **, int);
+void dispMap(mapEntry **, int);
  
 void genHuffCodes(node *, byteBuf *, int , char , mapEntry **, int); 
+
+void printEncodedText(char *, int, mapEntry **, int);
 
 int main(int argc, char **argv) {
 	printf("%d\n", BUFSIZ);
@@ -69,7 +72,8 @@ int main(int argc, char **argv) {
 	}
 
 	int read_bytes = 0;
-	if (isatty(0)) {
+	int unpipedIn = isatty(0);
+	if (unpipedIn) {
 		printf("Sentence: ");
 		fgets(str, BUFSIZ, stdin);
 	}
@@ -83,10 +87,10 @@ int main(int argc, char **argv) {
 		printf("Retard give me a full string\n");
 		return 1;
 	}
-/*	if (str[strl - 1] == '\n') {
+	if (unpipedIn && (str[strl - 1] == '\n')) {
 		str[strl - 1] = '\0';
 		strl--;
-	} */
+	}
 	printf("%s\n", str);
 
 	FILE *fp = fopen(argv[1], "w");
@@ -300,26 +304,8 @@ void huffmanEncode(char *str, FILE *fp) {
 	genHuffCodes(hufnd, &bb, 0, 0, mp, nnod);
 	freeBuf(&bb);
 
-	/*
-	printf("Lookup table:\n");
-	for (i = 0; i < nnod; i++) {
-		char mpch = mp[i]->ch;
-		switch (mpch) {
-			case '\n':
-				printf("'\\n': ");
-				break;
-			case ' ':
-				printf("' ': ");
-				break;
-			default:
-				printf("%c: ", mpch);
-		}
-		printf("\x1b[%dm", mp[i]->color);
-		dispBufContents(mp[i]->buf);
-		printf("\x1b[0m");
-		printf("\n");
-	}
-	*/
+	dispMap(mp, nnod);
+	printEncodedText(str, n, mp, nnod);
 
 	fputc(0x00, fp);
 	fputc(0x1a, fp);
@@ -489,6 +475,48 @@ void initMap(mapEntry **mp, int n) {
 		mp[i]->buf = (byteBuf *) malloc(sizeof(byteBuf));
 		initBuf(mp[i]->buf, 2);
 	}
+}
+
+void dispMap(mapEntry **mp, int n) {
+	int i;
+	printf("Lookup table:\n");
+	for (i = 0; i < n; i++) {
+		char mpch = mp[i]->ch;
+		switch (mpch) {
+			case '\n':
+				printf("'\\n': ");
+				break;
+			case ' ':
+				printf("' ': ");
+				break;
+			default:
+				printf("%c: ", mpch);
+		}
+		printf("\x1b[%dm", mp[i]->color);
+		dispBufContents(mp[i]->buf);
+		printf("\x1b[0m");
+		printf("\n");
+	}
+
+}
+
+void printEncodedText(char *str, int strl, mapEntry **mp, int n) {
+	printf("Encoded text: ");
+	int i, j;
+	for (i = 0; i < strl; i++) {
+		char ch = str[i];
+		int fInd = -1;
+		for (j = 0; j < n; j++) {
+			if (mp[j]->ch == ch) {
+				fInd = j;
+				break;
+			}
+		}
+		if (fInd == -1) break;
+		printf("\x1b[%dm", mp[fInd]->color);
+		dispBufContents(mp[fInd]->buf);
+	}
+	printf("\x1b[0m\n");
 }
 
 void freeMap(mapEntry **mp, int n) {
