@@ -32,20 +32,33 @@ void huffmanEncode(char *, FILE *);
 void freeNode(node *);
 
 typedef struct {
+	char bidx;	/* Bit index, value: [0, 7] */
+	unsigned char bbuf;
+} bitBuf;
+
+int insertBBuf(bitBuf *, unsigned char);
+void dispBBuf(bitBuf *);
+void dispBBufContents(bitBuf *);
+int decBBufInd(bitBuf *);
+void copyBBuf(bitBuf *, bitBuf *);
+void writeBBuf(bitBuf *, FILE *);
+
+typedef struct {
 	int cap;
-	unsigned char *bbuf;
-	int bidx, idx;
+	unsigned char *buf;
+	int idx;
+	bitBuf *bitb;	/* Honestly I could make it a struct instead of a ptr to a struct */
 } byteBuf;
 
 void initBuf(byteBuf *, int);
 void insertBuf(byteBuf *, unsigned char);
 void writeBuf(byteBuf *, FILE *);
 void dispBuf(byteBuf *);
+void dispBufContents(byteBuf *);
 void freeBuf(byteBuf *);
 void decBufInd(byteBuf *);
 void copyBuf(byteBuf *, byteBuf *);
-void dispBufContents(byteBuf *);
-void serializeTree(node *nd, byteBuf *buf); 
+void appendBuf(byteBuf *, byteBuf *);
 
 typedef struct {
 	char ch;
@@ -58,6 +71,7 @@ void freeMap(mapEntry **, int);
 void dispMap(mapEntry **, int);
  
 void genHuffCodes(node *, byteBuf *, int , char , mapEntry **, int); 
+void serializeTree(node *nd, byteBuf *buf); 
 
 void printEncodedText(char *, int, mapEntry **, int);
 
@@ -103,6 +117,7 @@ int main(int argc, char **argv) {
 
 	huffmanEncode(str, fp);
 	fclose(fp);
+
 	return 0;
 }
 
@@ -314,9 +329,9 @@ void huffmanEncode(char *str, FILE *fp) {
 	byteBuf treeBuf;
 	initBuf(&treeBuf, 5);
 	serializeTree(hufnd, &treeBuf);
-/*	printf("The tree serialized: ");
+	printf("The tree serialized: ");
 	dispBufContents(&treeBuf);
-	printf("\n"); */
+	printf("\n");
 	writeBuf(&treeBuf, fp);
 
 	freeBuf(&treeBuf);
@@ -334,12 +349,14 @@ void huffmanEncode(char *str, FILE *fp) {
 			}
 		}
 		if (fInd < 0) continue;
-		copyBuf(mp[fInd]->buf, &hufbb);
+		appendBuf(&hufbb, mp[fInd]->buf);
 	}
 
 /*	printf("The text serialized: ");
 	dispBufContents(&hufbb);
 	printf("\n"); */
+	printf("Hufbb\n");
+	dispBuf(&hufbb);
 	writeBuf(&hufbb, fp);
 
 	freeBuf(&hufbb);
@@ -347,9 +364,6 @@ void huffmanEncode(char *str, FILE *fp) {
 	freeMap(mp, nnod);
 	free(mp);
 
-
-/*	FILE *tfp = fopen("hufftree.bin", "w");
-	if (tfp) writeBuf(&treeBuf, tfp); */
 
 	freeNode(hufnd);
 	free(hufnd);
@@ -375,15 +389,70 @@ void freeNode(node *nd) {
 	}
 }
 
+int insertBBuf(bitBuf *bitb, unsigned char bit) {
+	int resetSignal = 0;
+	unsigned char byte = 1 << (7 - bitb->bidx);
+	/* reset */
+	bitb->bbuf &= ~byte;
+	/* insert */
+	bitb->bbuf |= (bit << (7 - bitb->bidx));
+	bitb->bidx++;
+
+	if (bitb->bidx >= 8) {
+		bitb->bidx = 0;
+		resetSignal = 1;
+	}
+	return resetSignal;
+}
+
+int decBBufInd(bitBuf *bitb) {
+	bitb->bidx--;
+	if (bitb->bidx < 0) {
+		bitb->bidx = 7;
+		return 1;
+	}
+	return 0;
+}
+
+void dispBBuf(bitBuf *bitb) {
+	printf("Bit index: %d\n", bitb->bidx);
+	printf("Contents: ");
+	dispBBufContents(bitb);
+	printf("\n");
+}
+void dispBBufContents(bitBuf *bitb) {
+	if (bitb->bidx <= 0) return;
+	unsigned char mask = 0x80;
+	int shift = 7, i;
+	for (i = 0; i < bitb->bidx; i++) {
+		unsigned char bit = (bitb->bbuf & mask) >> shift;
+		printf("%d", bit);
+		mask >>= 1; shift--;
+	}
+}
+
+void copyBBuf(bitBuf *srcbb, bitBuf *dstbb) {
+	dstbb->bidx = srcbb->bidx;
+	dstbb->bbuf = srcbb->bbuf;
+}
+
+void writeBBuf(bitBuf *bitb, FILE *fp) {
+	if (bitb->bidx <= 0) return;
+	fputc(bitb->bbuf, fp);
+}
+
 void initBuf(byteBuf *b, int n) {
 	b->cap = n;
-	b->bbuf = (unsigned char *) calloc(n, sizeof(char));
-	b->idx = b->bidx = 0;
+	b->buf = (unsigned char *) calloc(n, sizeof(char));
+	b->idx = 0;
+	bitBuf *bitb = (bitBuf *) malloc(sizeof(bitBuf));
+	bitb->bidx = 0;
+	bitb->bbuf = 0;
+	b->bitb = bitb;
 }
 
 void dispBuf(byteBuf *b) {
-	printf("Data: %08b\n", b->bbuf[b->idx]);
-	printf("Current index: (%d, %d)\n", b->idx, b->bidx);
+	printf("Current index: (%d, %d)\n", b->idx, b->bitb->bidx);
 	dispBufContents(b);
 	printf("\n");
 }
@@ -391,78 +460,73 @@ void dispBuf(byteBuf *b) {
 void dispBufContents(byteBuf *b) {
 	int i;
 	for (i = 0; i < b->idx; i++) {
-		printf("%08b", b->bbuf[i]);
+		printf("%08b", b->buf[i]);
 	}
-	unsigned char mask = 0x80;
-	int shift = 7;
-	for (i = 0; i < b->bidx; i++) {
-		unsigned char bit = (b->bbuf[b->idx] & mask) >> shift;
-		printf("%d", bit);
-		mask >>= 1; shift--;
-	}
+	dispBBufContents(b->bitb);
 }
 
 void insertBuf(byteBuf *b, unsigned char bit) {
-	if (b->idx >= b->cap) {
-		b->cap *= 2;
-		b->bbuf = (unsigned char *) reallocarray(b->bbuf, b->cap, sizeof(char));
-		b->bbuf[b->idx] = 0;
-	}
-	unsigned char byte = 1 << (7 - b->bidx);
-	/* reset */
-	b->bbuf[b->idx] &= ~byte;
-	/* insert */
-	b->bbuf[b->idx] |= (bit << (7 - b->bidx));
-	b->bidx++;
-	if (b->bidx > 7) {
-		b->bidx = 0;
+	int reset = insertBBuf(b->bitb, bit);
+	if (reset) {
+		if (b->idx >= b->cap) {
+			b->cap *= 2;
+			b->buf = (unsigned char *) reallocarray(b->buf, b->cap, sizeof(char));
+		}	
+		b->buf[b->idx] = b->bitb->bbuf;
+		b->bitb->bbuf = 0;
 		b->idx++;
-		if (b->idx < b->cap) b->bbuf[b->idx] = 0;
 	}
 }
 
+
 void writeBuf(byteBuf *b, FILE *fp) {
-	int nbits = b->idx * 8 + b->bidx;
-/*	printf("No. of bits = %d aka %x or %032b\n", nbits, nbits, nbits); */
+	int nbits = b->idx * 8 + b->bitb->bidx;
 	fwrite(&nbits, sizeof(int), 1, fp);
 	int i;
 	for (i = 0; i < b->idx; i++) {
-		fputc(b->bbuf[i], fp);
+		fputc(b->buf[i], fp);
 	}
-	if (b->bidx) fputc(b->bbuf[b->idx], fp);
+	writeBBuf(b->bitb, fp);
 }
 
 void freeBuf(byteBuf *b) {
-	free(b->bbuf);
-	b->idx = b->bidx = 0;
+	free(b->buf);
+	free(b->bitb);
+	b->idx = 0;
 }
-
 void decBufInd(byteBuf *b) {
-	b->bidx--;
-	if (b->bidx < 0) {
-		b->idx--;
-		b->bidx = 7;
-	}
+	int indDec = decBBufInd(b->bitb);
+	b->idx -= indDec;
 	if (b->idx < 0) exit(1);
 }
-
 void copyBuf(byteBuf *srcb, byteBuf *dstb) {
-	int i;
+	/* allocate same space as srcb */
+	int cap = srcb->cap, i;
+	dstb->cap = cap;
+	dstb->buf = (unsigned char *) reallocarray(dstb->buf, cap, sizeof(unsigned char));
 	for (i = 0; i < srcb->idx; i++) {
-		unsigned char byte = srcb->bbuf[i];
-		unsigned char mask = 0x80;
-		int shift = 7, j;
-		for (j = 0; j < 8; j++) {
+		dstb->buf[i] = srcb->buf[i];
+	}
+	dstb->idx = i;
+	copyBBuf(srcb->bitb, dstb->bitb);
+}
+
+void appendBuf(byteBuf *hostBb, byteBuf *elemBb) {
+	int i;
+	for (i = 0; i < elemBb->idx; i++) {
+		int j, shift = 7;
+		unsigned char mask = 0x80, byte = elemBb->buf[i];
+		for (; shift >= 0; shift--) {
 			unsigned char bit = (byte & mask) >> shift;
-			insertBuf(dstb, bit);
-			mask >>= 1; shift--;
+			mask >>= 1;
+			insertBuf(hostBb, bit);
 		}
 	}
-	unsigned char mask = 0x80;
+	unsigned char mask = 0x80, byte = elemBb->bitb->bbuf;
 	int shift = 7;
-	for (i = 0; i < srcb->bidx; i++) {
-		unsigned char bit = (srcb->bbuf[srcb->idx] & mask) >> shift;
-		insertBuf(dstb, bit);
+	for (i = 0; i < elemBb->bitb->bidx; i++) {
+		unsigned char bit = (byte & mask) >> shift;
+		insertBuf(hostBb, bit);
 		mask >>= 1; shift--;
 	}
 }

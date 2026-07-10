@@ -37,7 +37,6 @@ I would like to take a moment to list down top 10 reasons I wanted to flex this 
 10. Terminal colors are used to display the encoded bytes and the lookup table.
 
 That being said, there are still a few **to-dos**:
-1. Revamp the structure of the byte buffer.
-2. Make the source codes more readable.
-3. Structures for error handling (maybe).
+1. Make the source codes more readable.
+2. Structures for error handling (maybe).
 
