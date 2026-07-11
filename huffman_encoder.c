@@ -330,7 +330,7 @@ void huffmanEncode(char *str, FILE *fp) {
 	initBuf(&treeBuf, 5);
 	serializeTree(hufnd, &treeBuf);
 	printf("The tree serialized: ");
-	dispBufContents(&treeBuf);
+	dispBuf(&treeBuf);
 	printf("\n");
 	writeBuf(&treeBuf, fp);
 
@@ -352,11 +352,6 @@ void huffmanEncode(char *str, FILE *fp) {
 		appendBuf(&hufbb, mp[fInd]->buf);
 	}
 
-/*	printf("The text serialized: ");
-	dispBufContents(&hufbb);
-	printf("\n"); */
-	printf("Hufbb\n");
-	dispBuf(&hufbb);
 	writeBuf(&hufbb, fp);
 
 	freeBuf(&hufbb);
@@ -409,6 +404,7 @@ int decBBufInd(bitBuf *bitb) {
 	bitb->bidx--;
 	if (bitb->bidx < 0) {
 		bitb->bidx = 7;
+		printf("Going back to prev byte\n");
 		return 1;
 	}
 	return 0;
@@ -452,7 +448,7 @@ void initBuf(byteBuf *b, int n) {
 }
 
 void dispBuf(byteBuf *b) {
-	printf("Current index: (%d, %d)\n", b->idx, b->bitb->bidx);
+	printf("Current index: (%d, %d) or (%x, %x)\n", b->idx, b->bitb->bidx, b->idx, b->bitb->bidx);
 	dispBufContents(b);
 	printf("\n");
 }
@@ -480,8 +476,8 @@ void insertBuf(byteBuf *b, unsigned char bit) {
 
 
 void writeBuf(byteBuf *b, FILE *fp) {
-	int nbits = b->idx * 8 + b->bitb->bidx;
-	fwrite(&nbits, sizeof(int), 1, fp);
+	fwrite(&b->idx, sizeof(int), 1, fp);
+	fwrite(&b->bitb->bidx, sizeof(unsigned char), 1, fp);
 	int i;
 	for (i = 0; i < b->idx; i++) {
 		fputc(b->buf[i], fp);
@@ -496,7 +492,10 @@ void freeBuf(byteBuf *b) {
 }
 void decBufInd(byteBuf *b) {
 	int indDec = decBBufInd(b->bitb);
-	b->idx -= indDec;
+	if (indDec) {
+		b->idx--;
+		b->bitb->bbuf = b->buf[b->idx];
+	}
 	if (b->idx < 0) exit(1);
 }
 void copyBuf(byteBuf *srcb, byteBuf *dstb) {

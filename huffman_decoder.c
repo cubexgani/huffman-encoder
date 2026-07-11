@@ -21,7 +21,8 @@ typedef struct n_t {
 	struct n_t *left, *right;
 } node;
 
-int readFileToBuf(byteBuf *, FILE *, int);
+int readChunkToBuf(byteBuf *b, FILE *fp);
+int readBitsToBuf(byteBuf *, FILE *, int);
 void initBuf(byteBuf *, int);
 void freeBuf(byteBuf *);
 void dispBufContents(byteBuf *);
@@ -34,7 +35,7 @@ void dispReader(bufReader *);
 
 void makeTree(node **, bufReader *);
 void dispNode(node *nd);
-void huffmanDecode(node *, bufReader *, int, FILE *);
+void huffmanDecode(node *, bufReader *, FILE *);
 void freeNode(node *);
 
 int main(int argc, char **argv) {
@@ -56,32 +57,16 @@ int main(int argc, char **argv) {
 
 	printf("Format looks alright, moving on...");
 
-/*	char format[5];
-	fread(&format, sizeof(char), 3, fp);
-	format[3] = '\0';
-	printf("Format: %s\n", format);
-
-	if (strncmp(format, "HUF", 3)) {
-		printf("Inappropriate format\n");
-		return 1;
-	} */
-
 	byteBuf bb;
 	initBuf(&bb, 5);
 
-	int nbits = 0;
-	int read_bytes = fread(&nbits, sizeof(int), 1, fp);
-	printf("read %d bytes, nbits = %d\n", read_bytes, nbits);
+	int sts = readChunkToBuf(&bb, fp);
 
-	int sts = readFileToBuf(&bb, fp, nbits);
 	if (sts) {
 		printf("Unfinished file\n");
 		freeBuf(&bb);
 		fclose(fp);
 	}
-
-/*	dispBufContents(&bb); */
-	printf("\n");
 
 	bufReader br;
 	initReader(&br, &bb);
@@ -97,20 +82,20 @@ int main(int argc, char **argv) {
 
 	initBuf(&bb, 4);
 
-	nbits = 0;
-	read_bytes = fread(&nbits, sizeof(int), 1, fp);
-	printf("read %d bytes, nbits = %d\n", read_bytes, nbits);
-
-	readFileToBuf(&bb, fp, nbits);
-/*	dispBufContents(&bb); */
-	printf("\n");
+	sts = readChunkToBuf(&bb, fp);
+	if (sts) {
+		printf("Corrupted text section\n");
+		freeBuf(&bb);
+		fclose(fp);
+		return 1;
+	}
 
 	bufReader txtbr;
 	initReader(&txtbr, &bb);
 
 	FILE *ofp = fopen(argv[2], "w");
 	printf("Decoded text:\n");
-	huffmanDecode(nd, &txtbr, nbits, ofp);
+	huffmanDecode(nd, &txtbr, ofp);
 
 	freeBuf(&bb);
 
@@ -133,7 +118,7 @@ int checkFormat(FILE *fp) {
 			break;
 		}
 		printf("%02x ", intendedFormat[i]);
-		unsigned char finalCh = (unsigned char) ch;
+unsigned char finalCh = (unsigned char) ch;
 		if (finalCh != intendedFormat[i]) {
 			invalid = 1;
 			break;
@@ -143,13 +128,18 @@ int checkFormat(FILE *fp) {
 	return corrupted || invalid;
 }
 
-void huffmanDecode(node *nd, bufReader *br, int nbits, FILE *ofp) {
-	int nbytes = nbits / 8 + (nbits % 8 ? 1 : 0);
+void huffmanDecode(node *nd, bufReader *br, FILE *ofp) {
+	int nbits = br->bbuf->idx * 8 + br->bbuf->bidx;
+	printf("Total bits = %d\n", nbits);
 	node *temp = nd;
 	while (br->curInd * 8 + br->curBind < nbits) {
 		unsigned char bit = nextBit(br);
-		if (bit) temp = temp->right;
-		else temp = temp->left;
+		if (bit) {
+			temp = temp->right;
+		}
+		else {
+			temp = temp->left;
+		}
 		if (temp->ch) {
 			fputc(temp->ch, ofp);
 			printf("%c", temp->ch);
@@ -231,7 +221,6 @@ void advanceReader(bufReader *br) {
 
 unsigned char nextBit(bufReader *br) {
 	unsigned char byte = br->bbuf->bbuf[br->curInd];
-/*	printf("Look at this byte I found: %08b\n", byte); */
 	unsigned char bit = byte >> (7 - br->curBind);
 	bit &= 0x01;
 	advanceReader(br);
@@ -255,8 +244,22 @@ void dispReader(bufReader *br) {
 	printf("Indices: (%d, %d)\n", br->curInd, br->curBind);
 }
 
-int readFileToBuf(byteBuf *b, FILE *fp, int nbits) {
-	int nbytes = nbits / 8 + (nbits % 8 ? 1 : 0);
+int readChunkToBuf(byteBuf *b, FILE *fp) {
+	int nbytes = 0, nbits = 0;
+	int read_bytes = fread(&nbytes, sizeof(int), 1, fp);
+	printf("read %d bytes, nbytes = %d\n", read_bytes, nbytes);
+	read_bytes = fread(&nbits, sizeof(unsigned char), 1, fp);
+	printf("read %d bytes, nbits = %d\n", read_bytes, nbits);
+
+	b->bidx = nbits;
+	if (nbits > 0) nbytes++;
+	int sts = readBitsToBuf(b, fp, nbytes);
+	if (nbits > 0) b->idx--;
+	printf("Now we have (idx, bidx) = (%d, %d)\n", b->idx, b->bidx);
+	return sts;
+
+}
+int readBitsToBuf(byteBuf *b, FILE *fp, int nbytes) {
 	printf("nbytes = %d\n", nbytes);
 
 	unsigned char finalCh = 0;
@@ -275,8 +278,6 @@ int readFileToBuf(byteBuf *b, FILE *fp, int nbits) {
 		b->bbuf[b->idx] = finalCh;
 		b->idx++;
 	}
-	if (nbits % 8) b->idx--;
-	b->bidx = nbits % 8;
 	return corrupted;
 }
 

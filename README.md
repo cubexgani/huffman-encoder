@@ -9,8 +9,12 @@
 4. Safeguards are implemented so that corrupted data files are reported.
 
 ### Encoded file format
-`[ Magic bytes ][ Tree length in bits (4 bytes) ][ Serialized tree ][ Text length in bits (4 bytes) ][ Encoded text ]`
-Here magic bytes: `00 1a 48 55 46 46 ff 0a` (`48 55 46 46` corresponds to "HUFF" in ASCII)
+```
+[ Magic bytes ][ Byte offset for tree (4 bytes) ][ Bit offset for tree (1 byte) ][ Serialized tree ][ Byte offset for text (4 bytes) ][ Bit offset for text (1 byte) ][ Encoded text ]
+```
+Here magic bytes: `00 1a 48 55 46 46 ff 0a` (`48 55 46 46` corresponds to "HUFF" in ASCII).
+
+Total number of bits occupied = `byte_offset * 8 + bit_offset`
 
 ## Requirements
 1. Linux (or WSL) (because `unistd.h` is being used). I think MinGW works too.
