@@ -1,8 +1,19 @@
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
+
+typedef struct {
+	int cap;
+	int len;
+	char *buf;
+} string;
+
+int initStr(string *, int);
+int freeStr(string *);
+int readFile(string *, FILE *);
 
 typedef struct n_t {
 	unsigned char ch;
@@ -25,10 +36,10 @@ node * pop(node **, int);
 
 void display(node **, int);
 void dispNode(node *);
-int getFreqArr(char *, int, node ***);
+int getFreqArr(string *, node ***);
 
 void genHuffTree(node **, int);
-void huffmanEncode(char *, int, FILE *);
+void huffmanEncode(string *, FILE *);
 
 void freeNode(node *);
 
@@ -74,61 +85,90 @@ void dispMap(mapEntry **, int);
 void genHuffCodes(node *, byteBuf *, int , char , mapEntry **, int); 
 void serializeTree(node *nd, byteBuf *buf); 
 
-void printEncodedText(char *, int, mapEntry **, int);
+void printEncodedText(string *, mapEntry **, int);
 
 int main(int argc, char **argv) {
-	printf("%d\n", BUFSIZ);
-	char str[BUFSIZ];
-	printf("sizeof = %lu\n", sizeof(str));
-
 	if (argc != 2) {
-		printf("Usage: %s filename\n", argv[0]);
+		printf("Usage:  "
+			"%s <output_filename> (for terminal input)\n"
+			"   or:  cat <input_filename> | %s <output_filename> (for file input)\n",
+			argv[0], argv[0]);
 		return 1;
 	}
 
 	int read_bytes = 0;
 	int unpipedIn = isatty(0);
-	if (unpipedIn) {
-		printf("Sentence: ");
-		fgets(str, BUFSIZ, stdin);
-	}
-	else {
-		read_bytes = fread(str, 1, BUFSIZ, stdin);
-		printf("Read bytes = %d\n", read_bytes);
-		str[read_bytes] = '\0';
-	}
-	if (read_bytes == 0) {
+	string str;
+	initStr(&str, 20);
+	if (unpipedIn) printf("Sentence: ");
+	int err = readFile(&str, stdin);
+
+	if (str.len == 0) {
 		printf("Retard give me a full string\n");
 		return 1;
 	}
-/*	if (unpipedIn && (str[strl - 1] == '\n')) {
-		str[strl - 1] = '\0';
-		strl--;
-	} */
-	printf("%s\n", str);
+	printf("Read %d bytes\n", str.len);
+	printf("%s\n", str.buf);
 
 	FILE *fp = fopen(argv[1], "w");
 	if (!fp) {
 		printf("Some error occurred while opening file\n");
+		freeStr(&str);
 		return 1;
 	}
 
 	int i;
 
-	huffmanEncode(str, read_bytes, fp);
+	huffmanEncode(&str, fp);
 	fclose(fp);
+	freeStr(&str);
 
 	return 0;
 }
 
-int getFreqArr(char *str, int n, node ***chrnds) {
+int initStr(string *s, int len) {
+	if (len <= 0) return 1;
+	s->cap = len;
+	s->len = 0;
+	s->buf = (char *) calloc(len, sizeof(char));
+	if (!s->buf) return 1;
+	s->buf[s->len] = '\0';
+	return 0;
+}
+
+int freeStr(string *s) {
+	free(s->buf);
+	s->cap = s->len = 0;
+	return 0;
+}
+
+int readFile(string *s, FILE *fp) {
+	int nbytes = 0, prev_cap = s->cap;
+	do {
+		nbytes = fread(s->buf + s->len, sizeof(char), s->cap - s->len, fp);
+		s->len += nbytes;
+		if (s->len == s->cap) {
+			prev_cap = s->cap;
+			s->cap *= 2;
+			s->buf = (char *) reallocarray(s->buf, s->cap, sizeof(char));
+		}
+	} while (s->len == prev_cap);
+	if (nbytes == 0) {
+		s->cap *= 2;
+		s->buf = (char *) reallocarray(s->buf, s->cap, sizeof(char));
+	}
+	s->buf[s->len] = '\0';
+	return 0;
+}
+
+int getFreqArr(string *str, node ***chrnds) {
 	int *freqs = (int *) calloc(256, sizeof(int));
-	int i, nnzf = 0;
+	int i, nnzf = 0, n = str->len;
 
 	for (i = 0; i < n; i++) {
-		unsigned char ch = str[i];
+		unsigned char ch = str->buf[i];
 		if (freqs[ch] == 0) {
-			printf("%c : %02x\n", ch, ch);
+			printf("%c : %x\n", ch, ch);
 			nnzf++;
 		}
 		freqs[ch]++;
@@ -296,11 +336,11 @@ void serializeTree(node *nd, byteBuf *buf) {
 	}
 }
 
-void huffmanEncode(char *str, int slen, FILE *fp) {
-	int i, n = slen, nnod;
+void huffmanEncode(string *str, FILE *fp) {
+	int i, n = str->len, nnod;
 	printf("strlen = %d\n", n);
 	node **chrnodes;
-	nnod = getFreqArr(str, n, &chrnodes);
+	nnod = getFreqArr(str, &chrnodes);
 
 	mapEntry **mp = (mapEntry **) malloc(nnod * sizeof(mapEntry *));
 	initMap(mp, nnod);
@@ -324,7 +364,7 @@ void huffmanEncode(char *str, int slen, FILE *fp) {
 	freeBuf(&bb);
 
 	dispMap(mp, nnod);
-	printEncodedText(str, n, mp, nnod);
+	printEncodedText(str, mp, nnod);
 
 	fputc(0x00, fp);
 	fputc(0x1a, fp);
@@ -344,7 +384,7 @@ void huffmanEncode(char *str, int slen, FILE *fp) {
 	initBuf(&hufbb, 6);
 
 	for (i = 0; i < n; i++) {
-		unsigned char cur = str[i];
+		unsigned char cur = str->buf[i];
 		int j, fInd = -1;
 		for (j = 0; j < nnod; j++) {
 			if (mp[j]->ch == cur) {
@@ -567,11 +607,11 @@ void dispMap(mapEntry **mp, int n) {
 
 }
 
-void printEncodedText(char *str, int strl, mapEntry **mp, int n) {
+void printEncodedText(string *str, mapEntry **mp, int n) {
 	printf("Encoded text: ");
-	int i, j;
+	int i, j, strl = str->len;
 	for (i = 0; i < strl; i++) {
-		unsigned char ch = str[i];
+		unsigned char ch = str->buf[i];
 		int fInd = -1;
 		for (j = 0; j < n; j++) {
 			if (mp[j]->ch == ch) {
@@ -594,3 +634,5 @@ void freeMap(mapEntry **mp, int n) {
 		free(mp[i]);
 	}
 }
+
+#endif

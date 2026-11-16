@@ -42,7 +42,7 @@ void freeNode(node *);
 
 int main(int argc, char **argv) {
 	if (argc != 3) {
-		printf("Usage: %s input_filename output_filename\n", argv[0]);
+		printf("Usage:  %s <input_filename> <output_filename>\n", argv[0]);
 		return 1;
 	}
 	FILE *fp = fopen(argv[1], "r");
