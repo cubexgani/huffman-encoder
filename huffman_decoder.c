@@ -1,4 +1,6 @@
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,7 +19,7 @@ typedef struct {
 } bufReader;
 
 typedef struct n_t {
-	char ch;
+	unsigned char ch, is_leaf;
 	struct n_t *left, *right;
 } node;
 
@@ -118,7 +120,7 @@ int checkFormat(FILE *fp) {
 			break;
 		}
 		printf("%02x ", intendedFormat[i]);
-unsigned char finalCh = (unsigned char) ch;
+		unsigned char finalCh = (unsigned char) ch;
 		if (finalCh != intendedFormat[i]) {
 			invalid = 1;
 			break;
@@ -140,7 +142,7 @@ void huffmanDecode(node *nd, bufReader *br, FILE *ofp) {
 		else {
 			temp = temp->left;
 		}
-		if (temp->ch) {
+		if (temp->is_leaf) {
 			fputc(temp->ch, ofp);
 			printf("%c", temp->ch);
 			temp = nd;
@@ -154,11 +156,13 @@ void makeTree(node **nd, bufReader *br) {
 	node *newNd = (node *) malloc(sizeof(node));
 	if (bit) {
 		unsigned char byte = nextByte(br);
+		newNd->is_leaf = 1;
 		newNd->left = newNd->right = NULL;
 		newNd->ch = byte;
 	}
 	else {
 		newNd->ch = '\0';
+		newNd->is_leaf = 0;
 		makeTree(&newNd->left, br);
 		makeTree(&newNd->right, br);
 	}
@@ -166,7 +170,7 @@ void makeTree(node **nd, bufReader *br) {
 }
 
 void dispNode(node *nd) {
-	if (nd->ch) {
+	if (nd->is_leaf) {
 		switch (nd->ch) {
 			case ' ':
 				printf("(' ') ");
@@ -175,7 +179,7 @@ void dispNode(node *nd) {
 				printf("('\\n') ");
 				break;
 			default:
-				printf("(%c) ", nd->ch);
+				printf("(%x, %c) ", nd->ch, nd->ch);
 		}
 	}
 	else {
@@ -189,15 +193,15 @@ void dispNode(node *nd) {
 
 void freeNode(node *nd) {
 	if (!nd) return;
-	if (nd->ch) return;
-	if (nd->left->ch) {
+	if (nd->is_leaf) return;
+	if (nd->left->is_leaf) {
 		free(nd->left);
 	}
 	else {
 		freeNode(nd->left);
 		free(nd->left);
 	}
-	if (nd->right->ch) {
+	if (nd->right->is_leaf) {
 		free(nd->right);
 	}
 	else {
@@ -306,3 +310,4 @@ void freeBuf(byteBuf *b) {
 	b->idx = b->bidx = 0;
 }
 
+#endif

@@ -5,9 +5,10 @@
 #include <unistd.h>
 
 typedef struct n_t {
-	char ch;
-	int freq;
+	unsigned char ch;
 	char color;
+	unsigned char is_leaf;
+	int freq;
 	struct n_t *left, *right;
 } node;
 
@@ -27,7 +28,7 @@ void dispNode(node *);
 int getFreqArr(char *, int, node ***);
 
 void genHuffTree(node **, int);
-void huffmanEncode(char *, FILE *);
+void huffmanEncode(char *, int, FILE *);
 
 void freeNode(node *);
 
@@ -61,7 +62,7 @@ void copyBuf(byteBuf *, byteBuf *);
 void appendBuf(byteBuf *, byteBuf *);
 
 typedef struct {
-	char ch;
+	unsigned char ch;
 	char color;
 	byteBuf *buf;
 } mapEntry;
@@ -96,15 +97,14 @@ int main(int argc, char **argv) {
 		printf("Read bytes = %d\n", read_bytes);
 		str[read_bytes] = '\0';
 	}
-	int strl = strlen(str);
-	if (strl == 0) {
+	if (read_bytes == 0) {
 		printf("Retard give me a full string\n");
 		return 1;
 	}
-	if (unpipedIn && (str[strl - 1] == '\n')) {
+/*	if (unpipedIn && (str[strl - 1] == '\n')) {
 		str[strl - 1] = '\0';
 		strl--;
-	}
+	} */
 	printf("%s\n", str);
 
 	FILE *fp = fopen(argv[1], "w");
@@ -115,37 +115,40 @@ int main(int argc, char **argv) {
 
 	int i;
 
-	huffmanEncode(str, fp);
+	huffmanEncode(str, read_bytes, fp);
 	fclose(fp);
 
 	return 0;
 }
 
 int getFreqArr(char *str, int n, node ***chrnds) {
-	
-	/* Supports all 128 ASCII characters */
 	int *freqs = (int *) calloc(256, sizeof(int));
 	int i, nnzf = 0;
 
 	for (i = 0; i < n; i++) {
-		char ch = str[i];
-		if (freqs[ch] == 0) nnzf++;
+		unsigned char ch = str[i];
+		if (freqs[ch] == 0) {
+			printf("%c : %02x\n", ch, ch);
+			nnzf++;
+		}
 		freqs[ch]++;
 	}
+	printf("\n");
 
 	printf("Number of non zero frequencies: %d\n", nnzf);
 
 	node **chrnodes = (node **) malloc(nnzf * sizeof(node *));
-	char curch;
+	unsigned char curch;
 	int x = 0;
 
 	for (i = 0; i < 256; i++) {
 		if (freqs[i] == 0) continue;
-		curch = (char) i;
+		curch = (unsigned char) i;
 		node *chrn = (node *) malloc(sizeof(node));
 		chrn->ch = curch;
 		chrn->freq = freqs[i];
 		chrn->left = chrn->right = NULL;
+		chrn->is_leaf = 1;
 		chrnodes[x++] = chrn;
 	}
 
@@ -166,11 +169,11 @@ int getFreqArr(char *str, int n, node ***chrnds) {
 }
 
 void dispNode(node *nd) {
-	char ch = nd->ch;
-	if (ch) {
+	unsigned char ch = nd->ch;
+	if (nd->is_leaf) {
 		if (ch == ' ')  printf("' ': %d", nd->freq);
 		else if (ch == '\n')  printf("'\\n': %d", nd->freq);
-		else printf("%c: %d", ch, nd->freq);
+		else printf("(%x, %c): %d", ch, ch, nd->freq);
 	}
 	else {
 		printf("Parent freq: %d, ", nd->freq);
@@ -244,6 +247,7 @@ void genHuffTree(node **nds, int n) {
 		node *pnd = (node *) malloc(sizeof(node));
 		pnd->ch = 0;
 		pnd->freq = fm->freq + sm->freq;
+		pnd->is_leaf = 0;
 		pnd->left = fm;
 		pnd->right = sm;
 		push(nds, hsize++, pnd);
@@ -251,12 +255,12 @@ void genHuffTree(node **nds, int n) {
 }
 
 void genHuffCodes(node *nd, byteBuf *buf, int lvl, char dir, mapEntry **mp, int n) {
-	char ch = nd->ch;
+	unsigned char ch = nd->ch;
 	int freq = nd->freq;
 	if (lvl > 0) {
 		insertBuf(buf, (unsigned char) dir - 48);
 	}
-	if (ch) {
+	if (nd->is_leaf) {
 		int find = -1, i;
 		for (i = 0; i < n; i++) {
 			if (mp[i]->ch == ch) {
@@ -275,7 +279,7 @@ void genHuffCodes(node *nd, byteBuf *buf, int lvl, char dir, mapEntry **mp, int 
 }
 
 void serializeTree(node *nd, byteBuf *buf) {
-	if (nd->ch) {
+	if (nd->is_leaf) {
 		insertBuf(buf, 1);
 		unsigned char mask = 0x80, byte = nd->ch;
 		int shift = 7;
@@ -292,8 +296,8 @@ void serializeTree(node *nd, byteBuf *buf) {
 	}
 }
 
-void huffmanEncode(char *str, FILE *fp) {
-	int i, n = strlen(str), nnod;
+void huffmanEncode(char *str, int slen, FILE *fp) {
+	int i, n = slen, nnod;
 	printf("strlen = %d\n", n);
 	node **chrnodes;
 	nnod = getFreqArr(str, n, &chrnodes);
@@ -340,7 +344,7 @@ void huffmanEncode(char *str, FILE *fp) {
 	initBuf(&hufbb, 6);
 
 	for (i = 0; i < n; i++) {
-		char cur = str[i];
+		unsigned char cur = str[i];
 		int j, fInd = -1;
 		for (j = 0; j < nnod; j++) {
 			if (mp[j]->ch == cur) {
@@ -367,7 +371,7 @@ void huffmanEncode(char *str, FILE *fp) {
 
 void freeNode(node *nd) {
 	if (!nd) return;
-	if (nd->ch) return;
+	if (nd->is_leaf) return;
 	if (nd->left->ch) {
 		free(nd->left);
 	}
@@ -544,7 +548,7 @@ void dispMap(mapEntry **mp, int n) {
 	int i;
 	printf("Lookup table:\n");
 	for (i = 0; i < n; i++) {
-		char mpch = mp[i]->ch;
+		unsigned char mpch = mp[i]->ch;
 		switch (mpch) {
 			case '\n':
 				printf("'\\n': ");
@@ -553,7 +557,7 @@ void dispMap(mapEntry **mp, int n) {
 				printf("' ': ");
 				break;
 			default:
-				printf("%c: ", mpch);
+				printf("(%x, %c): ", mpch, mpch);
 		}
 		printf("\x1b[%dm", mp[i]->color);
 		dispBufContents(mp[i]->buf);
@@ -567,7 +571,7 @@ void printEncodedText(char *str, int strl, mapEntry **mp, int n) {
 	printf("Encoded text: ");
 	int i, j;
 	for (i = 0; i < strl; i++) {
-		char ch = str[i];
+		unsigned char ch = str[i];
 		int fInd = -1;
 		for (j = 0; j < n; j++) {
 			if (mp[j]->ch == ch) {
