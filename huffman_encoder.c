@@ -96,19 +96,18 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	int read_bytes = 0;
 	int unpipedIn = isatty(0);
 	string str;
 	initStr(&str, 20);
 	if (unpipedIn) printf("Sentence: ");
-	int err = readFile(&str, stdin);
+	readFile(&str, stdin);
 
 	if (str.len == 0) {
 		printf("Retard give me a full string\n");
 		return 1;
 	}
 	printf("Read %d bytes\n", str.len);
-	printf("%s\n", str.buf);
+/*	printf("%s\n", str.buf); */
 
 	FILE *fp = fopen(argv[1], "w");
 	if (!fp) {
@@ -116,8 +115,6 @@ int main(int argc, char **argv) {
 		freeStr(&str);
 		return 1;
 	}
-
-	int i;
 
 	huffmanEncode(&str, fp);
 	fclose(fp);
@@ -168,7 +165,7 @@ int getFreqArr(string *str, node ***chrnds) {
 	for (i = 0; i < n; i++) {
 		unsigned char ch = str->buf[i];
 		if (freqs[ch] == 0) {
-			printf("%c : %x\n", ch, ch);
+/*			printf("%c : %x\n", ch, ch); */
 			nnzf++;
 		}
 		freqs[ch]++;
@@ -280,7 +277,7 @@ node * pop(node **nds, int n) {
 }
 
 void genHuffTree(node **nds, int n) {
-	int hsize = n, x = 1;
+	int hsize = n;
 	while (hsize > 1) {
 		node *fm = pop(nds, hsize--);
 		node *sm = pop(nds, hsize--);
@@ -296,7 +293,6 @@ void genHuffTree(node **nds, int n) {
 
 void genHuffCodes(node *nd, byteBuf *buf, int lvl, char dir, mapEntry **mp, int n) {
 	unsigned char ch = nd->ch;
-	int freq = nd->freq;
 	if (lvl > 0) {
 		insertBuf(buf, (unsigned char) dir - 48);
 	}
@@ -353,9 +349,9 @@ void huffmanEncode(string *str, FILE *fp) {
 	genHuffTree(chrnodes, nnod);
 	node *hufnd = top(chrnodes, nnod);
 
-	printf("Huffman tree:\n");
+/*	printf("Huffman tree:\n");
 	dispNode(hufnd);
-	printf("\n");
+	printf("\n"); */
 
 	byteBuf bb;
 	initBuf(&bb, 2);
@@ -363,8 +359,8 @@ void huffmanEncode(string *str, FILE *fp) {
 	genHuffCodes(hufnd, &bb, 0, 0, mp, nnod);
 	freeBuf(&bb);
 
-	dispMap(mp, nnod);
-	printEncodedText(str, mp, nnod);
+/*	dispMap(mp, nnod);
+	printEncodedText(str, mp, nnod); */
 
 	fputc(0x00, fp);
 	fputc(0x1a, fp);
@@ -373,9 +369,9 @@ void huffmanEncode(string *str, FILE *fp) {
 	byteBuf treeBuf;
 	initBuf(&treeBuf, 5);
 	serializeTree(hufnd, &treeBuf);
-	printf("The tree serialized: ");
+/*	printf("The tree serialized: ");
 	dispBuf(&treeBuf);
-	printf("\n");
+	printf("\n"); */
 	writeBuf(&treeBuf, fp);
 
 	freeBuf(&treeBuf);
@@ -448,7 +444,6 @@ int decBBufInd(bitBuf *bitb) {
 	bitb->bidx--;
 	if (bitb->bidx < 0) {
 		bitb->bidx = 7;
-		printf("Going back to prev byte\n");
 		return 1;
 	}
 	return 0;
@@ -557,7 +552,7 @@ void copyBuf(byteBuf *srcb, byteBuf *dstb) {
 void appendBuf(byteBuf *hostBb, byteBuf *elemBb) {
 	int i;
 	for (i = 0; i < elemBb->idx; i++) {
-		int j, shift = 7;
+		int shift = 7;
 		unsigned char mask = 0x80, byte = elemBb->buf[i];
 		for (; shift >= 0; shift--) {
 			unsigned char bit = (byte & mask) >> shift;

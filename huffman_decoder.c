@@ -72,13 +72,12 @@ int main(int argc, char **argv) {
 
 	bufReader br;
 	initReader(&br, &bb);
-	int i;
 
 	node *nd;
 	makeTree(&nd, &br);
-	printf("Tree:\n");
+/*	printf("Tree:\n");
 	dispNode(nd);
-	printf("\n");
+	printf("\n"); */
 
 	freeBuf(&bb);
 
@@ -144,7 +143,7 @@ void huffmanDecode(node *nd, bufReader *br, FILE *ofp) {
 		}
 		if (temp->is_leaf) {
 			fputc(temp->ch, ofp);
-			printf("%c", temp->ch);
+/*			printf("%c", temp->ch); */
 			temp = nd;
 		}
 	}
@@ -251,15 +250,15 @@ void dispReader(bufReader *br) {
 int readChunkToBuf(byteBuf *b, FILE *fp) {
 	int nbytes = 0, nbits = 0;
 	int read_bytes = fread(&nbytes, sizeof(int), 1, fp);
-	printf("read %d bytes, nbytes = %d\n", read_bytes, nbytes);
+/*	printf("read %d bytes, nbytes = %d\n", read_bytes, nbytes); */
 	read_bytes = fread(&nbits, sizeof(unsigned char), 1, fp);
-	printf("read %d bytes, nbits = %d\n", read_bytes, nbits);
+/*	printf("read %d bytes, nbits = %d\n", read_bytes, nbits); */
 
 	b->bidx = nbits;
 	if (nbits > 0) nbytes++;
 	int sts = readBitsToBuf(b, fp, nbytes);
 	if (nbits > 0) b->idx--;
-	printf("Now we have (idx, bidx) = (%d, %d)\n", b->idx, b->bidx);
+/*	printf("Now we have (idx, bidx) = (%d, %d)\n", b->idx, b->bidx); */
 	return sts;
 
 }
